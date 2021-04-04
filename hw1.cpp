@@ -126,15 +126,16 @@ void print_maps(struct pid_info info, string option, string arg)
     ifstream maps(info.path + "maps");
     stringstream ss;
     string mapsline;
+    size_t offset;
     string device, file;
     ino_t inode;
     while (getline(maps, mapsline))
     {
         ss << mapsline;
-        ss >> file >> file >> file >> device >> inode >> file;
+        ss >> file >> file >> offset >> device >> inode >> file;
         ss.str("");
         ss.clear();
-        if (device == "00:00" || inode == 0)
+        if (device == "00:00" || inode == 0 || offset != 0)
             continue;
         
         print_result(info, "mem", "REG", to_string(inode), file, option, arg);
