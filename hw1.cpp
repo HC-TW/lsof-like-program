@@ -114,9 +114,6 @@ void print_type(string type, struct pid_info info, string option, string arg)
             type = type.substr(3) + 'r';
         else if ((typestat.st_mode & 0600) == S_IWUSR)
             type = type.substr(3) + 'w';
-
-        if (tail(link_dest, 9) == "(deleted)")
-            type = "del";
     }
     print_result(info, type, TYPE, inode, link_dest, option, arg);
 }
@@ -127,6 +124,7 @@ void print_maps(struct pid_info info, string option, string arg)
     stringstream ss;
     string mapsline;
     size_t offset;
+    string FD = "mem", TYPE = "REG";
     string device, file;
     ino_t inode;
     while (getline(maps, mapsline))
@@ -137,8 +135,13 @@ void print_maps(struct pid_info info, string option, string arg)
         ss.clear();
         if (device == "00:00" || inode == 0 || offset != 0)
             continue;
-        
-        print_result(info, "mem", "REG", to_string(inode), file, option, arg);
+        if (tail(file, 9) == "(deleted)")
+        {
+            FD = "del";
+            TYPE = "unknown";
+        }
+
+        print_result(info, FD, TYPE, to_string(inode), file, option, arg);
         /* printf("%-9s %5d %10s %4s %9s %10ld %s\n", info.cmdline.c_str(), info.pid, info.user.c_str(),
                "mem", "REG", inode, file.c_str()); */
     }
