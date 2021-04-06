@@ -11,6 +11,9 @@
 
 using namespace std;
 
+bool option[3] = {false};
+string arg[3];
+
 struct pid_info
 {
     pid_t pid;
@@ -26,41 +29,37 @@ string tail(string source, size_t length)
     return source.substr(source.size() - length);
 }
 
-void print_result(struct pid_info info, string FD, string TYPE, string inode, string file, string option, string arg)
+void print_result(struct pid_info info, string FD, string TYPE, string inode, string file)
 {
-    bool printLine = false;
     // filter file infomation
-    if (option == "default")
+    bool check[3] = {false};
+    if (option[0])
     {
-        printLine = true;
+        regex re(".*(" + arg[0] + ").*");
+        if (!regex_match(info.cmdline, re))
+            check[0] = true;
     }
-    else if (option == "c")
+    if (option[1])
     {
-        regex re(".*(" + arg + ").*");
-        if (regex_match(info.cmdline, re))
-            printLine = true;
+        if (TYPE != arg[1])
+            check[1] = true;
     }
-    else if (option == "t")
+    if (option[2])
     {
-        if (TYPE == arg)
-            printLine = true;
-    }
-    else if (option == "f")
-    {
-        regex re(".*(" + arg + ").*");
-        if (regex_match(file, re))
-            printLine = true;
+        regex re(".*(" + arg[2] + ").*");
+        if (!regex_match(file, re))
+            check[2] = true;
     }
 
     // print the infomation of the opened file
-    if (printLine)
+    if (!check[0] && !check[1] && !check[2])
     {
         printf("%-9s %5d %10s %4s %9s %10s %s\n", info.cmdline.c_str(), info.pid, info.user.c_str(),
                FD.c_str(), TYPE.c_str(), inode.c_str(), file.c_str());
     }
 }
 
-void print_type(string type, struct pid_info info, string option, string arg)
+void print_type(string type, struct pid_info info)
 {
     struct stat typestat;
     static ssize_t link_dest_size;
@@ -114,11 +113,16 @@ void print_type(string type, struct pid_info info, string option, string arg)
             type = type.substr(3) + 'r';
         else if ((typestat.st_mode & 0600) == S_IWUSR)
             type = type.substr(3) + 'w';
+
+        if (tail(link_dest, 9) == "(deleted)")
+        {
+            TYPE = "unknown";
+        }
     }
-    print_result(info, type, TYPE, inode, link_dest, option, arg);
+    print_result(info, type, TYPE, inode, link_dest);
 }
 
-void print_maps(struct pid_info info, string option, string arg)
+void print_maps(struct pid_info info)
 {
     ifstream maps(info.path + "maps");
     stringstream ss;
@@ -141,14 +145,14 @@ void print_maps(struct pid_info info, string option, string arg)
             TYPE = "unknown";
         }
 
-        print_result(info, FD, TYPE, to_string(inode), file, option, arg);
+        print_result(info, FD, TYPE, to_string(inode), file);
         /* printf("%-9s %5d %10s %4s %9s %10ld %s\n", info.cmdline.c_str(), info.pid, info.user.c_str(),
                "mem", "REG", inode, file.c_str()); */
     }
     maps.close();
 }
 
-void print_fds(struct pid_info info, string option, string arg)
+void print_fds(struct pid_info info)
 {
     DIR *dir = opendir((info.path + "fd").c_str());
     if (dir == NULL)
@@ -156,7 +160,7 @@ void print_fds(struct pid_info info, string option, string arg)
         char msg[1024];
         snprintf(msg, 1024, "%s (opendir: %s)", (info.path + "fd").c_str(), strerror(errno));
 
-        print_result(info, "NOFD", "", "", msg, option, arg);
+        print_result(info, "NOFD", "", "", msg);
         /* printf("%-9s %5d %10s %4s %9s %10s %s\n", info.cmdline.c_str(), info.pid, info.user.c_str(),
                "NOFD", "", "", msg); */
         return;
@@ -168,12 +172,12 @@ void print_fds(struct pid_info info, string option, string arg)
             continue;
         string fdir = "fd/";
         fdir += de->d_name;
-        print_type(fdir, info, option, arg);
+        print_type(fdir, info);
     }
     closedir(dir);
 }
 
-void lsof_info(pid_t pid, string option, string arg)
+void lsof_info(pid_t pid)
 {
     struct pid_info info;
     struct stat pidstat;
@@ -210,39 +214,45 @@ void lsof_info(pid_t pid, string option, string arg)
     info.cmdline = cmd.substr(1, cmd.length() - 2);
 
     // print opened files
-    print_type("cwd", info, option, arg);
-    print_type("root", info, option, arg);
-    print_type("exe", info, option, arg);
-    print_maps(info, option, arg);
-    print_fds(info, option, arg);
+    print_type("cwd", info);
+    print_type("root", info);
+    print_type("exe", info);
+    print_maps(info);
+    print_fds(info);
 }
 
 int main(int argc, char *argv[])
 {
-    string option = "default";
-    string arg;
     pid_t pid = 0;
     char *endptr;
     DIR *dir = opendir("/proc");
-
-    if (argc == 3)
+    
+    if (argc >= 3)
     {
-        if (!strcmp(argv[1], "-c") || !strcmp(argv[1], "-f"))
+        for (int i = 1; i < argc; i = i + 2)
         {
-            option = argv[1][1];
-            arg = argv[2];
-        }
-        else if (!strcmp(argv[1], "-t"))
-        {
-            option = 't';
-            if (strcmp(argv[2], "REG") && strcmp(argv[2], "CHR") && strcmp(argv[2], "DIR") && strcmp(argv[2], "FIFO") && strcmp(argv[2], "SOCK") && strcmp(argv[2], "unknown"))
+            if (!strcmp(argv[i], "-c"))
             {
-                cerr << "Invalid TYPE option." << endl;
-                return 0;
+                option[0] = true;
+                arg[0] = argv[i + 1];
             }
-            else
+            else if (!strcmp(argv[i], "-t"))
             {
-                arg = argv[2];
+                option[1] = true;
+                if (strcmp(argv[i + 1], "REG") && strcmp(argv[i + 1], "CHR") && strcmp(argv[i + 1], "DIR") && strcmp(argv[i + 1], "FIFO") && strcmp(argv[i + 1], "SOCK") && strcmp(argv[i + 1], "unknown"))
+                {
+                    cerr << "Invalid TYPE option." << endl;
+                    return 0;
+                }
+                else
+                {
+                    arg[1] = argv[i + 1];
+                }
+            }
+            else if (!strcmp(argv[i], "-f"))
+            {
+                option[2] = true;
+                arg[2] = argv[i + 1];
             }
         }
     }
@@ -265,7 +275,7 @@ int main(int argc, char *argv[])
         pid = strtol(de->d_name, &endptr, 10);
         if (*endptr != '\0')
             continue;
-        lsof_info(pid, option, arg);
+        lsof_info(pid);
     }
     closedir(dir);
 }
