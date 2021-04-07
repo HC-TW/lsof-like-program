@@ -106,14 +106,16 @@ void print_type(string type, struct pid_info info)
     // Check the mode of file descriptor if needed.
     if (type.substr(0, 3) == "fd/")
     {
-        // Distinguish the type of file descriptor.
-        if ((typestat.st_mode & 0600) == 0600)
-            type = type.substr(3) + 'u';
-        else if ((typestat.st_mode & 0600) == S_IRUSR)
-            type = type.substr(3) + 'r';
-        else if ((typestat.st_mode & 0600) == S_IWUSR)
-            type = type.substr(3) + 'w';
-
+        if (!lstat((info.path + type).c_str(), &typestat))
+        {
+            // Distinguish the type of file descriptor.
+            if ((typestat.st_mode & 0600) == 0600)
+                type = type.substr(3) + 'u';
+            else if ((typestat.st_mode & 0600) == S_IRUSR)
+                type = type.substr(3) + 'r';
+            else if ((typestat.st_mode & 0600) == S_IWUSR)
+                type = type.substr(3) + 'w';
+        }
         if (tail(link_dest, 9) == "(deleted)")
         {
             TYPE = "unknown";
@@ -226,7 +228,7 @@ int main(int argc, char *argv[])
     pid_t pid = 0;
     char *endptr;
     DIR *dir = opendir("/proc");
-    
+
     if (argc >= 3)
     {
         for (int i = 1; i < argc; i = i + 2)
@@ -238,7 +240,6 @@ int main(int argc, char *argv[])
             }
             else if (!strcmp(argv[i], "-t"))
             {
-                option[1] = true;
                 if (strcmp(argv[i + 1], "REG") && strcmp(argv[i + 1], "CHR") && strcmp(argv[i + 1], "DIR") && strcmp(argv[i + 1], "FIFO") && strcmp(argv[i + 1], "SOCK") && strcmp(argv[i + 1], "unknown"))
                 {
                     cerr << "Invalid TYPE option." << endl;
@@ -246,6 +247,7 @@ int main(int argc, char *argv[])
                 }
                 else
                 {
+                    option[1] = true;
                     arg[1] = argv[i + 1];
                 }
             }
